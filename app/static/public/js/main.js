@@ -57,6 +57,9 @@ const elements = {
   modalCar: document.getElementById("modalCar"),
   modalSubmit: document.getElementById("modalSubmit"),
   modalStatus: document.getElementById("modalStatus"),
+  imageLightbox: document.getElementById("imageLightbox"),
+  lightboxImage: document.getElementById("lightboxImage"),
+  lightboxCounter: document.getElementById("lightboxCounter"),
 };
 
 function setNavState(isOpen) {
@@ -110,6 +113,31 @@ function sanitizeUrl(url) {
   return DEFAULT_IMAGE;
 }
 
+function optimizePhotoUrl(url, variant = "card") {
+  const safeUrl = sanitizeUrl(url);
+
+  try {
+    const parsed = new URL(safeUrl, window.location.origin);
+    if (parsed.hostname === "images.unsplash.com") {
+      const presets = {
+        thumb: { width: "320", quality: "82" },
+        card: { width: "900", quality: "82" },
+        detail: { width: "1800", quality: "90" },
+        lightbox: { width: "2400", quality: "92" },
+      };
+      const preset = presets[variant] || presets.card;
+
+      parsed.searchParams.set("w", preset.width);
+      parsed.searchParams.set("q", preset.quality);
+      parsed.searchParams.set("auto", "format");
+      parsed.searchParams.set("fit", "max");
+      return parsed.toString();
+    }
+  } catch (_error) {}
+
+  return safeUrl;
+}
+
 function safeText(value, fallback = "—") {
   const cleaned = String(value ?? "").trim();
   return escapeHtml(cleaned || fallback);
@@ -154,10 +182,11 @@ function populateCarSelects(selectedValue = "") {
     : fallbackOptions;
 }
 
-function getCarPhotos(car) {
+function getCarPhotos(car, variant = "card") {
   const photos = Array.isArray(car?.photos) ? car.photos : [];
   const safePhotos = photos.map(sanitizeUrl).filter(Boolean);
-  return safePhotos.length ? safePhotos : [DEFAULT_IMAGE];
+  const photoList = safePhotos.length ? safePhotos : [DEFAULT_IMAGE];
+  return photoList.map((photo) => optimizePhotoUrl(photo, variant));
 }
 
 async function apiRequest(path, options = {}) {
@@ -297,7 +326,7 @@ function renderCars(filter) {
   elements.carsGrid.innerHTML = "";
   cars.forEach((car, index) => {
     const card = document.createElement("div");
-    const photo = getCarPhotos(car)[0];
+    const photo = getCarPhotos(car, "card")[0];
     const carLabel = selectedCarLabel(car) || "Автомобиль";
 
     card.className = "car-card reveal";
@@ -339,6 +368,9 @@ function filterCars(button, filter) {
 
 function showPage(page) {
   closeNav();
+  if (page !== "detail") {
+    closeImageLightbox();
+  }
   elements.mainPage.classList.toggle("active", page === "main");
   elements.detailPage.classList.toggle("active", page === "detail");
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -348,7 +380,8 @@ function showPage(page) {
 }
 
 function renderDetail(car) {
-  const photos = getCarPhotos(car);
+  const photos = getCarPhotos(car, "detail");
+  const thumbPhotos = getCarPhotos(car, "thumb");
   const specs = Array.isArray(car.fullSpecs) ? car.fullSpecs : [];
   const features = Array.isArray(car.features) ? car.features : [];
   const credit = Array.isArray(car.credit) ? car.credit : [];
@@ -358,7 +391,7 @@ function renderDetail(car) {
     <div class="detail-hero">
       <div class="gallery">
         <div class="gallery-main">
-          <img id="mImg" src="${photos[0]}" alt="${escapeHtml(carLabel)}" onerror="this.src='${DEFAULT_IMAGE}'">
+          <img id="mImg" src="${photos[0]}" alt="${escapeHtml(carLabel)}" tabindex="0" onclick="openImageLightbox()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openImageLightbox();}" onerror="this.src='${DEFAULT_IMAGE}'">
           <div class="gallery-main-overlay"></div>
           <div class="gallery-nav">
             <button type="button" class="gnav-btn" onclick="gNav(-1)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,18 9,12 15,6"/></svg></button>
@@ -366,7 +399,7 @@ function renderDetail(car) {
           </div>
         </div>
         <div class="gallery-thumbs">
-          ${photos
+          ${thumbPhotos
             .map(
               (photo, index) =>
                 `<div class="thumb ${index === 0 ? "active" : ""}" onclick="gSet(${index})"><img src="${photo}" alt="${escapeHtml(carLabel)}"></div>`
@@ -473,18 +506,19 @@ async function openDetail(carId) {
 
   state.currentCar = car;
   state.galleryIndex = 0;
+  closeImageLightbox();
   populateCarSelects(selectedCarLabel(car));
   renderDetail(car);
 }
 
 function gNav(direction) {
-  const total = getCarPhotos(state.currentCar).length;
+  const total = getCarPhotos(state.currentCar, "detail").length;
   gSet((state.galleryIndex + direction + total) % total);
 }
 
 function gSet(index) {
   state.galleryIndex = index;
-  const photos = getCarPhotos(state.currentCar);
+  const photos = getCarPhotos(state.currentCar, "detail");
   const image = document.getElementById("mImg");
   if (!image) {
     return;
@@ -496,9 +530,56 @@ function gSet(index) {
     image.style.opacity = "1";
   }, 180);
   image.style.transition = "opacity 0.22s";
+  syncImageLightbox();
   document.querySelectorAll(".thumb").forEach((thumb, thumbIndex) => {
     thumb.classList.toggle("active", thumbIndex === index);
   });
+}
+
+function syncImageLightbox() {
+  if (!elements.imageLightbox?.classList.contains("open") || !state.currentCar) {
+    return;
+  }
+
+  const photos = getCarPhotos(state.currentCar, "lightbox");
+  const currentPhoto = photos[state.galleryIndex] || photos[0] || DEFAULT_IMAGE;
+
+  elements.lightboxImage.src = currentPhoto;
+  elements.lightboxImage.alt = selectedCarLabel(state.currentCar) || "Автомобиль суреті";
+  elements.lightboxCounter.textContent = `${state.galleryIndex + 1} / ${photos.length}`;
+}
+
+function openImageLightbox(index = state.galleryIndex) {
+  if (!state.currentCar) {
+    return;
+  }
+
+  state.galleryIndex = index;
+  const detailPhotos = getCarPhotos(state.currentCar, "detail");
+  const detailImage = document.getElementById("mImg");
+  if (detailImage && detailPhotos[index]) {
+    detailImage.src = detailPhotos[index];
+  }
+
+  elements.imageLightbox.classList.add("open");
+  elements.imageLightbox.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+  syncImageLightbox();
+}
+
+function closeImageLightbox() {
+  if (!elements.imageLightbox) {
+    return;
+  }
+
+  elements.imageLightbox.classList.remove("open");
+  elements.imageLightbox.setAttribute("aria-hidden", "true");
+  document.body.style.overflow = "";
+}
+
+function lightboxNav(direction) {
+  const total = getCarPhotos(state.currentCar, "lightbox").length;
+  gSet((state.galleryIndex + direction + total) % total);
 }
 
 function dTab(button, tabId) {
@@ -605,13 +686,29 @@ function init() {
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      if (elements.imageLightbox.classList.contains("open")) {
+        closeImageLightbox();
+        return;
+      }
       closeNav();
+    }
+    if (elements.imageLightbox.classList.contains("open") && event.key === "ArrowLeft") {
+      lightboxNav(-1);
+    }
+    if (elements.imageLightbox.classList.contains("open") && event.key === "ArrowRight") {
+      lightboxNav(1);
     }
   });
 
   elements.modal.addEventListener("click", (event) => {
     if (event.target === elements.modal) {
       closeModal();
+    }
+  });
+
+  elements.imageLightbox.addEventListener("click", (event) => {
+    if (event.target === elements.imageLightbox) {
+      closeImageLightbox();
     }
   });
 }
@@ -626,6 +723,9 @@ window.gSet = gSet;
 window.dTab = dTab;
 window.openModal = openModal;
 window.closeModal = closeModal;
+window.openImageLightbox = openImageLightbox;
+window.closeImageLightbox = closeImageLightbox;
+window.lightboxNav = lightboxNav;
 window.submitForm = submitForm;
 window.submitModal = submitModal;
 
