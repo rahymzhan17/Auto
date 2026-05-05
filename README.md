@@ -1,8 +1,23 @@
 # AutoLux
 
-Кәсіби құрылымға келтірілген автосалон жобасы. Енді жоба `Flask app factory` үлгісімен ұйымдастырылған, front/admin активтері бөлек папкаларда сақталады, ал база мен жүктелген файлдар жеке каталогтарға шығарылған.
+AutoLux енді production-қа бейімделген Flask қосымша:
 
-## Құрылым
+- `PostgreSQL` арқылы автомобильдер сақталады
+- `SQLAlchemy` модельдері қолданылады
+- фотолар `Cloudinary` арқылы сервер жағында жүктеледі
+- Render deploy кезінде фото да, база да жоғалмайды
+
+## Негізгі модель
+
+`Car` моделі:
+
+- `id`
+- `name`
+- `price`
+- `image_url`
+- `description`
+
+## Жоба құрылымы
 
 ```text
 app/
@@ -13,26 +28,18 @@ app/
   templates/
     admin/
     public/
-data/
-storage/uploads/
-tests/
+  auth.py
+  config.py
+  db.py
+  models.py
+  services.py
+app.py
 server.py
+render.yaml
+requirements.txt
 ```
 
-## Негізгі жақсартулар
-
-- backend модульдерге бөлінді: `config`, `db`, `auth`, `services`, `routes`
-- public және admin беттері Flask арқылы бір origin-нен беріледі
-- hardcoded `localhost` адресі алынып тасталды
-- админ логині `.env` арқылы басқарылады
-- public/admin рендерлеуде мәтіндер escape жасалады
-- form validation және қате хабарламалары жақсарды
-- public detail route енді жасырын машиналарды қайтармайды
-- файл жүктеу өлшемі мен форматтары тексеріледі
-
-## Іске қосу
-
-1. Виртуалды орта құрыңыз және тәуелділіктерді орнатыңыз:
+## Орнату
 
 ```powershell
 python -m venv .venv
@@ -40,62 +47,96 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-2. `.env.example` файлын `.env` қылып көшіріп, мәндерін толтырыңыз.
+`.env.example` файлын `.env` қылып көшіріп, мәндерін толтырыңыз.
 
-3. Қосыңыз:
+## Environment Variables
+
+- `DATABASE_URL`
+- `SECRET_KEY`
+- `ADMIN_USERNAME`
+- `ADMIN_PASSWORD` немесе `ADMIN_PASSWORD_HASH`
+- `CLOUD_NAME`
+- `API_KEY`
+- `API_SECRET`
+- `CLOUDINARY_FOLDER` (міндетті емес)
+- `MAX_CONTENT_LENGTH` (міндетті емес)
+
+## Іске қосу
 
 ```powershell
-python server.py
+python app.py
 ```
 
-4. Сайт:
+Адрестер:
 
 - public: `http://localhost:5000/`
 - admin: `http://localhost:5000/admin`
 
-## Render-ге шығару
+## Upload қалай жұмыс істейді
 
-Бұл жобаға қазір ең оңай жолдың бірі - Render.
+Admin форма `multipart/form-data` арқылы `/upload` endpoint-іне жібереді.
 
-Неге дәл осы нұсқа:
+Backend:
 
-- Flask жобасын ресми түрде қолдайды
-- custom domain пен HTTPS автоматты түрде беріледі
-- persistent disk қосуға болады, бұл `SQLite` пен `uploads` үшін маңызды
+1. файлды тексереді (`jpg`, `jpeg`, `png`)
+2. файлды Cloudinary-ге жүктейді
+3. `secure_url` алады
+4. сол URL-ды PostgreSQL базаға `image_url` ретінде сақтайды
 
-Render құжаттары:
+Локальды `storage/uploads` немесе `/static/uploads` қолданылмайды.
 
-- Flask deploy: https://render.com/docs/deploy-flask
-- Persistent disk: https://render.com/docs/disks
-- Custom domain: https://render.com/docs/custom-domains
-- Blueprint / `render.yaml`: https://render.com/docs/blueprint-spec
+## Render Deploy
 
-Қадамдар:
+1. Render ішінде алдымен PostgreSQL service жасаңыз.
+2. Оның connection string мәнін web service-тағы `DATABASE_URL` env var-ына қойыңыз.
+3. Web service үшін мына env мәндерді толтырыңыз:
 
-1. Жобаны GitHub-қа жүктеңіз.
-2. Render ішінде `New +` -> `Blueprint` немесе `Web Service` таңдаңыз.
-3. Репозиторийді қосыңыз.
-4. Егер `render.yaml` арқылы ашсаңыз, сервис конфигі автоматты оқылады.
-5. Render сізден мына құпия мәндерді сұрайды:
-   - `ADMIN_USERNAME`
-   - `ADMIN_PASSWORD`
-6. `JWT_SECRET` автоматты түрде генерацияланады.
-7. Deploy біткен соң сізге `.onrender.com` адресі беріледі.
-8. Қаласаңыз кейін custom domain байлайсыз.
+```text
+DATABASE_URL=...
+SECRET_KEY=...
+ADMIN_USERNAME=...
+ADMIN_PASSWORD_HASH=... немесе ADMIN_PASSWORD=...
+CLOUD_NAME=...
+API_KEY=...
+API_SECRET=...
+```
 
-Ескерту:
+4. Build command:
 
-- Render-дегі root filesystem әдетте уақытша, сондықтан бұл жоба үшін persistent disk міндетті.
-- Дискі бар сервис multi-instance scale жасамайды және deploy кезінде қысқа downtime болуы мүмкін.
-- Бұл жоба үшін ол қалыпты, себебі қазір `SQLite + local uploads` архитектурасы қолданылып тұр.
+```text
+pip install -r requirements.txt
+```
+
+5. Start command:
+
+```text
+gunicorn server:app --bind 0.0.0.0:$PORT
+```
+
+6. Deploy жасаңыз.
+
+Неге деректер жоғалмайды:
+
+- PostgreSQL Render managed database болғандықтан deploy кезінде сақталады
+- фото Cloudinary-де сақталады, сондықтан сервер filesystem-іне тәуелді емес
+
+## HTML форма мысалы
+
+Нақты жұмыс істейтін форма [app/templates/admin/index.html](app/templates/admin/index.html) ішінде бар.
+
+Қысқа нұсқа:
+
+```html
+<form action="/upload" method="post" enctype="multipart/form-data">
+  <input type="text" name="name" required>
+  <input type="text" name="price" required>
+  <textarea name="description" required></textarea>
+  <input type="file" name="image" accept=".jpg,.jpeg,.png" required>
+</form>
+```
 
 ## Тест
 
 ```powershell
 python -m unittest discover -s tests
 ```
-
-## Ескерту
-
-- production-та `ADMIN_PASSWORD_HASH` қолданған дұрыс
-- `data/` және `storage/uploads/` git-ке қоспау ұсынылады

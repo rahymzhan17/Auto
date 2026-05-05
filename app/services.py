@@ -1,124 +1,114 @@
-from .utils import (
-    ALLOWED_CAR_TYPES,
-    DEFAULT_CAR_IMAGE,
-    ValidationError,
-    clean_choice,
-    clean_optional_text,
-    clean_phone,
-    clean_photo_list,
-    clean_price,
-    clean_string_list,
-    clean_text,
-    format_down_payment,
-    parse_json_list,
-)
+import re
+from pathlib import Path
+from decimal import Decimal, InvalidOperation
+
+import cloudinary
+import cloudinary.uploader
+from flask import current_app
+from werkzeug.datastructures import FileStorage
+from werkzeug.utils import secure_filename
 
 
-def parse_active_flag(value, fallback=1):
-    if value in (None, ""):
-        return fallback
-    if isinstance(value, bool):
-        return 1 if value else 0
-    text = str(value).strip().lower()
-    if text in {"1", "true", "yes", "on"}:
-        return 1
-    if text in {"0", "false", "no", "off"}:
-        return 0
-    raise ValidationError("Белсенділік мәні жарамсыз")
+ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png"}
+ALLOWED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/jpg"}
+PRICE_PATTERN = re.compile(r"[^\d,.\s]")
 
 
-def serialize_car(row):
-    data = dict(row)
-    photos = parse_json_list(data.get("photos")) or [DEFAULT_CAR_IMAGE]
-    features = parse_json_list(data.get("features"))
-    down_payment = format_down_payment(data.get("full_price"))
+class ValidationError(ValueError):
+    pass
 
+
+def configure_cloudinary(app) -> None:
+    cloudinary.config(
+        cloud_name=app.config["CLOUD_NAME"],
+        api_key=app.config["API_KEY"],
+        api_secret=app.config["API_SECRET"],
+        secure=True,
+    )
+
+
+def clean_text(value, *, field_name: str, max_length: int, allow_blank: bool = False) -> str:
+    cleaned = str(value or "").strip()
+    if not cleaned and not allow_blank:
+        raise ValidationError(f"{field_name} міндетті")
+    if len(cleaned) > max_length:
+        raise ValidationError(f"{field_name} тым ұзын")
+    return cleaned
+
+
+def parse_price(value) -> Decimal:
+    raw_value = clean_text(value, field_name="Баға", max_length=32)
+    normalized = PRICE_PATTERN.sub("", raw_value).replace(" ", "").replace(",", ".")
+    if normalized.count(".") > 1:
+        raise ValidationError("Баға форматы жарамсыз")
+
+    try:
+        price = Decimal(normalized)
+    except InvalidOperation as error:
+        raise ValidationError("Баға сан болуы керек") from error
+
+    if price <= 0:
+        raise ValidationError("Баға нөлден үлкен болуы керек")
+    return price.quantize(Decimal("0.01"))
+
+
+def validate_car_form(form):
     return {
-        "id": data["id"],
-        "brand": data["brand"],
-        "name": data["name"],
-        "type": data.get("type", "sedan"),
-        "tag": data.get("tag", "ЖАҢА"),
-        "price": data.get("price", ""),
-        "fullPrice": data.get("full_price", ""),
-        "monthlyPrice": data.get("monthly_price", ""),
-        "engine": data.get("engine", ""),
-        "speed": data.get("speed", ""),
-        "drive": data.get("drive", ""),
-        "fuel": data.get("fuel", ""),
-        "tagline": data.get("tagline", ""),
-        "photos": photos,
-        "features": features,
-        "active": data.get("is_active", 1),
-        "created": data.get("created", ""),
-        "fullSpecs": [
-            {"k": "engine", "l": "Қозғалтқыш", "v": data.get("engine", "—")},
-            {"k": "speed", "l": "0–100 км/с", "v": data.get("speed", "—")},
-            {"k": "fuel", "l": "Отын", "v": data.get("fuel", "—")},
-            {"k": "drive", "l": "Жетек жүйесі", "v": data.get("drive", "—")},
-            {"k": "seats", "l": "Орын саны", "v": "5"},
-            {"k": "year", "l": "Жыл", "v": "2024"},
-        ],
-        "credit": [
-            {"l": "Автомобиль бағасы", "v": f'{data.get("full_price", "")} ₸'.strip()},
-            {"l": "Бастапқы жарна (20%)", "v": f"{down_payment} ₸"},
-            {"l": "Кредит мерзімі", "v": "60 ай"},
-            {"l": "Ай сайынғы төлем", "v": f'{data.get("monthly_price", "") or "—"} ₸'},
-            {"l": "Пайыздық мөлшерлеме", "v": "9.9% жылдық"},
-        ],
+        "name": clean_text(form.get("name"), field_name="Модель атауы", max_length=160),
+        "price": parse_price(form.get("price")),
+        "description": clean_text(
+            form.get("description"),
+            field_name="Сипаттама",
+            max_length=2000,
+        ),
     }
 
 
-def validate_car_payload(payload):
-    data = payload or {}
+def validate_image_file(file_storage: FileStorage | None) -> str:
+    if file_storage is None or not file_storage.filename:
+        raise ValidationError("Фото таңдалмады")
 
-    brand = clean_text(data.get("brand"), max_length=80)
-    name = clean_text(data.get("name"), max_length=80)
-    price = clean_price(data.get("price"))
-    full_price = clean_price(data.get("full_price") or price)
-    monthly_price = clean_price(data.get("monthly_price"), required=False)
+    filename = secure_filename(file_storage.filename)
+    if "." not in filename:
+        raise ValidationError("Файл кеңейтімі табылмады")
 
-    return {
-        "brand": brand,
-        "name": name,
-        "type": clean_choice(data.get("type"), ALLOWED_CAR_TYPES, default="sedan"),
-        "tag": clean_optional_text(data.get("tag"), max_length=30) or "ЖАҢА",
-        "price": price,
-        "full_price": full_price,
-        "monthly_price": monthly_price,
-        "engine": clean_optional_text(data.get("engine"), max_length=60),
-        "speed": clean_optional_text(data.get("speed"), max_length=40),
-        "drive": clean_optional_text(data.get("drive"), max_length=40),
-        "fuel": clean_optional_text(data.get("fuel"), max_length=40),
-        "tagline": clean_optional_text(data.get("tagline"), max_length=240),
-        "photos": clean_photo_list(data.get("photos")),
-        "features": clean_string_list(data.get("features"), item_limit=20, item_length=80),
-        "is_active": parse_active_flag(data.get("is_active", data.get("active", 1))),
-    }
+    extension = filename.rsplit(".", 1)[1].lower()
+    if extension not in ALLOWED_IMAGE_EXTENSIONS:
+        raise ValidationError("Тек JPG және PNG файлдарына рұқсат бар")
+
+    if (file_storage.mimetype or "").lower() not in ALLOWED_IMAGE_MIME_TYPES:
+        raise ValidationError("Файл түрі жарамсыз")
+
+    return filename
 
 
-def validate_contact_payload(payload):
-    data = payload or {}
-    return {
-        "name": clean_text(data.get("name"), max_length=80),
-        "phone": clean_phone(data.get("phone")),
-        "car": clean_optional_text(data.get("car"), max_length=80),
-        "message": clean_optional_text(data.get("message"), max_length=500),
-    }
+def upload_image_to_cloudinary(file_storage: FileStorage | None) -> str:
+    filename = validate_image_file(file_storage)
+    file_storage.stream.seek(0)
+
+    try:
+        result = cloudinary.uploader.upload(
+            file_storage.stream,
+            folder=current_app.config["CLOUDINARY_FOLDER"],
+            resource_type="image",
+            public_id=Path(filename).stem,
+            use_filename=True,
+            unique_filename=True,
+            overwrite=False,
+        )
+    except Exception as error:  # pragma: no cover - Cloudinary internals are external
+        raise RuntimeError("Cloudinary-ге жүктеу сәтсіз аяқталды") from error
+
+    secure_url = str(result.get("secure_url", "")).strip()
+    if not secure_url:
+        raise RuntimeError("Cloudinary secure_url қайтармады")
+    return secure_url
 
 
-def validate_testdrive_payload(payload):
-    data = payload or {}
-    return {
-        "name": clean_text(data.get("name"), max_length=80),
-        "phone": clean_phone(data.get("phone")),
-        "car": clean_optional_text(data.get("car"), max_length=80),
-    }
+def format_money(value) -> str:
+    amount = Decimal(value or 0).quantize(Decimal("0.01"))
+    if amount == amount.to_integral():
+        return f"{int(amount):,}".replace(",", " ")
 
-
-def validate_status_payload(payload):
-    data = payload or {}
-    status = clean_optional_text(data.get("status"), max_length=20).lower()
-    if status not in {"new", "confirmed", "done", "cancelled"}:
-        raise ValidationError("Күй мәні жарамсыз")
-    return status
+    formatted = f"{amount:,.2f}"
+    return formatted.replace(",", " ").replace(".", ",")

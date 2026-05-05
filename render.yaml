@@ -7,18 +7,22 @@ services:
     startCommand: gunicorn server:app --bind 0.0.0.0:$PORT
     healthCheckPath: /health
     autoDeployTrigger: commit
-    disk:
-      name: autolux-disk
-      mountPath: /opt/render/project/src/persist
-      sizeGB: 1
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
       - key: ADMIN_USERNAME
         sync: false
-      - key: ADMIN_PASSWORD
+      - key: ADMIN_PASSWORD_HASH
         sync: false
-      - key: JWT_SECRET
-        generateValue: true
-      - key: DATA_DIR
-        value: /opt/render/project/src/persist/data
-      - key: STORAGE_DIR
-        value: /opt/render/project/src/persist/storage
+      - key: CLOUD_NAME
+        sync: false
+      - key: API_KEY
+        sync: false
+      - key: API_SECRET
+        sync: false
+      - key: CLOUDINARY_FOLDER
+        value: autolux

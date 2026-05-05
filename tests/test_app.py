@@ -1,139 +1,141 @@
+import io
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from app import create_app
+from app.db import db
+from app.models import Car
 
 
 class AutoLuxAppTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.base_path = Path(self.temp_dir.name)
-        self.data_dir = self.base_path / "data"
-        self.storage_dir = self.base_path / "storage"
-        self.upload_dir = self.storage_dir / "uploads"
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.upload_dir.mkdir(parents=True, exist_ok=True)
+        self.database_path = self.base_path / "test.db"
 
         self.app = create_app(
             {
                 "TESTING": True,
-                "DATABASE_PATH": self.data_dir / "test.db",
-                "DATA_DIR": self.data_dir,
-                "STORAGE_DIR": self.storage_dir,
-                "UPLOAD_DIR": self.upload_dir,
-                "JWT_SECRET": "test-secret-key-with-32-characters",
+                "SECRET_KEY": "test-secret-key-with-32-characters",
+                "DATABASE_URL": f"sqlite:///{self.database_path.as_posix()}",
                 "ADMIN_USERNAME": "admin",
                 "ADMIN_PASSWORD": "StrongPass123",
-                "ADMIN_PASSWORD_HASH": "",
+                "CLOUD_NAME": "demo-cloud",
+                "API_KEY": "demo-key",
+                "API_SECRET": "demo-secret",
+                "SESSION_COOKIE_SECURE": False,
             }
         )
         self.client = self.app.test_client()
 
     def tearDown(self):
+        with self.app.app_context():
+            db.session.remove()
+            db.drop_all()
+            db.engine.dispose()
         self.temp_dir.cleanup()
 
-    def login_headers(self):
-        response = self.client.post(
-            "/api/login",
-            json={"username": "admin", "password": "StrongPass123"},
+    def login(self):
+        return self.client.post(
+            "/admin/login",
+            data={"username": "admin", "password": "StrongPass123"},
+            follow_redirects=False,
         )
-        self.assertEqual(response.status_code, 200)
-        token = response.get_json()["token"]
-        return {"Authorization": f"Bearer {token}"}
 
-    def test_public_pages_render(self):
+    def test_public_and_login_pages_render(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         self.assertIn("AutoLux".encode("utf-8"), response.data)
 
         admin_page = self.client.get("/admin")
         self.assertEqual(admin_page.status_code, 200)
-        self.assertIn("Басқару Панелі".encode("utf-8"), admin_page.data)
+        self.assertIn("Secure Admin Access".encode("utf-8"), admin_page.data)
 
-    def test_hidden_car_not_available_publicly(self):
-        headers = self.login_headers()
-        create_response = self.client.post(
-            "/api/admin/cars",
-            headers=headers,
-            json={
-                "brand": "Test",
-                "name": "Hidden",
-                "type": "sedan",
-                "tag": "HIDE",
-                "price": "10 000 000",
-                "full_price": "10 000 000",
-                "monthly_price": "100 000",
-                "engine": "2.0",
-                "speed": "7.0 сек",
-                "drive": "FWD",
-                "fuel": "Бензин",
-                "tagline": "hidden car",
-                "features": ["Feature 1"],
-                "photos": [],
-                "is_active": 0,
-            },
-        )
-        self.assertEqual(create_response.status_code, 200)
-        car_id = create_response.get_json()["car"]["id"]
-
-        public_list = self.client.get("/api/cars")
-        self.assertEqual(public_list.status_code, 200)
-        public_ids = {car["id"] for car in public_list.get_json()}
-        self.assertNotIn(car_id, public_ids)
-
-        public_detail = self.client.get(f"/api/cars/{car_id}")
-        self.assertEqual(public_detail.status_code, 404)
-
-    def test_contact_validation(self):
+    def test_upload_requires_login(self):
         response = self.client.post(
-            "/api/contact",
-            json={"name": "", "phone": "", "message": "Hi"},
+            "/upload",
+            headers={"Accept": "application/json", "X-Requested-With": "fetch"},
+            data={},
         )
+        self.assertEqual(response.status_code, 401)
+
+    @patch("app.routes.admin.upload_image_to_cloudinary")
+    def test_upload_creates_car_and_returns_secure_url(self, mock_upload):
+        mock_upload.return_value = "https://res.cloudinary.com/demo/image/upload/car.jpg"
+
+        login_response = self.login()
+        self.assertEqual(login_response.status_code, 302)
+
+        with self.client as client:
+            client.post("/admin/login", data={"username": "admin", "password": "StrongPass123"})
+            response = client.post(
+                "/upload",
+                headers={"Accept": "application/json", "X-Requested-With": "fetch"},
+                data={
+                    "name": "BMW X7",
+                    "price": "85000000",
+                    "description": "Premium SUV for production deploy test",
+                    "image": (io.BytesIO(b"fake-png-content"), "bmw.png", "image/png"),
+                },
+                content_type="multipart/form-data",
+            )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.get_json()
+        self.assertEqual(
+            payload["secure_url"],
+            "https://res.cloudinary.com/demo/image/upload/car.jpg",
+        )
+        self.assertEqual(payload["car"]["name"], "BMW X7")
+
+        with self.app.app_context():
+            cars = Car.query.all()
+            self.assertEqual(len(cars), 1)
+            self.assertEqual(cars[0].image_url, payload["secure_url"])
+
+    def test_upload_rejects_invalid_extension(self):
+        with self.client as client:
+            client.post("/admin/login", data={"username": "admin", "password": "StrongPass123"})
+            response = client.post(
+                "/upload",
+                headers={"Accept": "application/json", "X-Requested-With": "fetch"},
+                data={
+                    "name": "Audi Q8",
+                    "price": "72000000",
+                    "description": "Invalid file type test",
+                    "image": (io.BytesIO(b"plain-text"), "q8.gif", "image/gif"),
+                },
+                content_type="multipart/form-data",
+            )
+
         self.assertEqual(response.status_code, 400)
+        self.assertIn("JPG", response.get_json()["error"])
 
-    def test_admin_stats_authorized(self):
-        response = self.client.get("/api/admin/stats", headers=self.login_headers())
+    @patch("app.routes.admin.upload_image_to_cloudinary")
+    def test_api_cars_returns_saved_image_url(self, mock_upload):
+        mock_upload.return_value = "https://res.cloudinary.com/demo/image/upload/lexus.jpg"
+
+        with self.client as client:
+            client.post("/admin/login", data={"username": "admin", "password": "StrongPass123"})
+            client.post(
+                "/upload",
+                headers={"Accept": "application/json", "X-Requested-With": "fetch"},
+                data={
+                    "name": "Lexus RX",
+                    "price": "55500000",
+                    "description": "Hybrid crossover",
+                    "image": (io.BytesIO(b"fake-png-content"), "lexus.png", "image/png"),
+                },
+                content_type="multipart/form-data",
+            )
+
+        response = self.client.get("/api/cars")
         self.assertEqual(response.status_code, 200)
-        data = response.get_json()
-        self.assertIn("cars", data)
-        self.assertIn("td_total", data)
-
-    @patch("app.routes.admin.download_image_from_url")
-    def test_admin_upload_url_saves_remote_image_locally(self, mock_download):
-        mock_download.return_value = {
-            "url": "",
-            "bytes": b"fake-image-bytes",
-            "filename": "remote-photo.jpg",
-        }
-
-        response = self.client.post(
-            "/api/admin/upload-url",
-            headers=self.login_headers(),
-            json={"url": "https://example.com/car.jpg"},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()["url"], "/uploads/remote-photo.jpg")
-        self.assertTrue((self.upload_dir / "remote-photo.jpg").exists())
-
-    @patch("app.routes.admin.download_image_from_url")
-    def test_admin_upload_url_returns_existing_local_upload(self, mock_download):
-        mock_download.return_value = {
-            "url": "/uploads/already-there.png",
-            "bytes": b"",
-            "filename": "",
-        }
-
-        response = self.client.post(
-            "/api/admin/upload-url",
-            headers=self.login_headers(),
-            json={"url": "/uploads/already-there.png"},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()["url"], "/uploads/already-there.png")
+        cars = response.get_json()
+        self.assertEqual(len(cars), 1)
+        self.assertEqual(cars[0]["image_url"], "https://res.cloudinary.com/demo/image/upload/lexus.jpg")
 
 
 if __name__ == "__main__":

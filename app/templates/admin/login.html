@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="kk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AutoLux — Admin Login</title>
+  <link rel="icon" type="image/png" href="/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='admin/css/admin.css') }}">
+</head>
+<body class="login-page">
+  <main class="login-shell">
+    <section class="login-card">
+      <div class="admin-eyebrow">Secure Admin Access</div>
+      <h1>AUTO<span>LUX</span></h1>
+      <p>Cloudinary және PostgreSQL арқылы жұмыс істейтін production панельге кіру.</p>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-stack compact">
+            {% for category, message in messages %}
+              <div class="flash-message {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <form class="login-form" method="post" action="{{ url_for('admin.login') }}">
+        <label>
+          <span>Логин</span>
+          <input type="text" name="username" placeholder="admin" required autocomplete="username">
+        </label>
+        <label>
+          <span>Пароль</span>
+          <input type="password" name="password" placeholder="••••••••" required autocomplete="current-password">
+        </label>
+        <button type="submit" class="primary-button">Кіру</button>
+      </form>
+
+      <a class="ghost-link" href="{{ url_for('public.homepage') }}">Сайтқа оралу</a>
+    </section>
+  </main>
+</body>
+</html>

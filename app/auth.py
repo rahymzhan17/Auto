@@ -1,51 +1,51 @@
-from datetime import datetime, timedelta, timezone
 from functools import wraps
 
-import jwt
-from flask import current_app, g, jsonify, request
+from flask import current_app, flash, jsonify, redirect, request, session, url_for
 from werkzeug.security import check_password_hash
 
-from .db import get_db
+
+def _expects_json() -> bool:
+    accept_json = request.accept_mimetypes["application/json"]
+    accept_html = request.accept_mimetypes["text/html"]
+    return request.headers.get("X-Requested-With") == "fetch" or accept_json >= accept_html
 
 
-def verify_credentials(username, password):
-    row = get_db().execute(
-        "SELECT username, password FROM admins WHERE username=?",
-        (username,),
-    ).fetchone()
-    if not row:
+def is_admin_authenticated() -> bool:
+    return bool(session.get("admin_authenticated"))
+
+
+def verify_credentials(username: str, password: str) -> bool:
+    expected_username = current_app.config["ADMIN_USERNAME"]
+    password_hash = current_app.config["ADMIN_PASSWORD_HASH"]
+    if username != expected_username or not password_hash:
         return False
-    return check_password_hash(row["password"], password)
+    return check_password_hash(password_hash, password)
 
 
-def issue_token(username):
-    expires_at = datetime.now(timezone.utc) + timedelta(
-        hours=current_app.config["JWT_EXPIRES_HOURS"]
-    )
-    return jwt.encode(
-        {"sub": username, "exp": expires_at},
-        current_app.config["JWT_SECRET"],
-        algorithm=current_app.config["JWT_ALGORITHM"],
-    )
+def login_user(username: str) -> None:
+    session.clear()
+    session["admin_authenticated"] = True
+    session["admin_username"] = username
 
 
-def require_auth(handler):
+def logout_user() -> None:
+    session.clear()
+
+
+def current_admin_username() -> str:
+    return session.get("admin_username", current_app.config.get("ADMIN_USERNAME", "Admin"))
+
+
+def login_required(handler):
     @wraps(handler)
     def wrapped(*args, **kwargs):
-        token = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
-        if not token:
-            return jsonify({"error": "Токен табылмады"}), 401
+        if is_admin_authenticated():
+            return handler(*args, **kwargs)
 
-        try:
-            payload = jwt.decode(
-                token,
-                current_app.config["JWT_SECRET"],
-                algorithms=[current_app.config["JWT_ALGORITHM"]],
-            )
-        except jwt.InvalidTokenError:
-            return jsonify({"error": "Сессия мерзімі аяқталды"}), 401
+        if _expects_json():
+            return jsonify({"error": "Авторизация қажет"}), 401
 
-        g.current_user = payload.get("sub")
-        return handler(*args, **kwargs)
+        flash("Алдымен админ панельге кіріңіз.", "error")
+        return redirect(url_for("admin.admin_page"))
 
     return wrapped
