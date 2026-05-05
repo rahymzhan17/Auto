@@ -15,6 +15,12 @@ def homepage():
     return render_template("public/index.html")
 
 
+@public.get("/logo.png")
+def logo():
+    project_root = Path(current_app.root_path).parent
+    return send_from_directory(project_root, "logo.png")
+
+
 @public.get("/admin")
 def admin_page():
     return render_template("admin/index.html")
