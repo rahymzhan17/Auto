@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="kk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AutoLux — Админ</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Montserrat:wght@400;600;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='admin/css/admin.css') }}">
+</head>
+<body>
+
+<div id="lw">
+  <div class="lc">
+    <div class="ll">AUTO<span>LUX</span></div>
+    <div class="ls">Басқару Панелі</div>
+    <div class="lh">Кіру деректері `.env` файлынан оқылады. Қауіпсіздік үшін олар енді формада алдын ала толтырылмайды.</div>
+    <div class="fi"><label>Логин</label><input id="lu" type="text" placeholder="admin" autocomplete="username"></div>
+    <div class="fi"><label>Пароль</label><input id="lp" type="password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <button class="bl" id="loginBtn" onclick="doLogin()">КІРУ →</button>
+    <div class="le" id="le">Қате логин немесе пароль</div>
+  </div>
+</div>
+
+<div id="app">
+  <div class="layout">
+    <aside class="sb" id="sidebar">
+      <div class="sbl">
+        <div class="sbh">
+          <div>
+            <div class="slt">AUTO<span>LUX</span></div>
+            <div class="sls">Басқару Панелі</div>
+          </div>
+          <button
+            type="button"
+            class="sbt"
+            id="sidebarToggle"
+            onclick="toggleSidebar()"
+            aria-label="Менюді ашу"
+            aria-expanded="false"
+            aria-controls="sidebarNav"
+          >
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+        </div>
+      </div>
+      <nav class="snav" id="sidebarNav">
+        <div class="sl on" onclick="nav('dash',this)"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>Басты бет</div>
+        <div class="sl" onclick="nav('td',this)"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>Тест Драйв<span class="sbdg" id="tdB" style="display:none">0</span></div>
+        <div class="sl" onclick="nav('ct',this)"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>Байланыс</div>
+        <div class="sl" onclick="nav('cars',this)"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 17H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><rect x="9" y="11" width="14" height="10" rx="2"/><circle cx="12" cy="20" r="1"/><circle cx="20" cy="20" r="1"/></svg>Автомобильдер</div>
+      </nav>
+      <div class="sf">
+        <div class="sfn" id="sUsr">Админ</div>
+        <div class="sfr">Жүйе администраторы</div>
+        <button class="bo" onclick="doLogout()">← ШЫҒУ</button>
+      </div>
+    </aside>
+
+    <div class="main">
+      <div id="pg-dash" class="pg on">
+        <div class="tb"><div class="pt">БАСТЫ БЕТ</div><div style="font-size:12px;color:var(--g)" id="cdate"></div></div>
+        <div class="page-pad">
+          <div class="sg">
+            <div class="sc scb"><div class="si sib"><svg width="20" height="20" fill="none" stroke="var(--blue)" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div><div class="sn" id="s1">—</div><div class="slb">Барлық тест-драйв</div></div>
+            <div class="sc scr"><div class="si sir"><svg width="20" height="20" fill="none" stroke="var(--red)" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><div class="sn" id="s2">—</div><div class="slb">Жаңа өтінімдер</div></div>
+            <div class="sc scy"><div class="si siy"><svg width="20" height="20" fill="none" stroke="var(--acc)" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/></svg></div><div class="sn" id="s3">—</div><div class="slb">Белсенді машиналар</div></div>
+            <div class="sc scg"><div class="si sig"><svg width="20" height="20" fill="none" stroke="var(--grn)" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/></svg></div><div class="sn" id="s4">—</div><div class="slb">Байланыс өтінімдері</div></div>
+          </div>
+          <div class="dash-panels">
+            <div class="tw"><div class="th"><span class="tt">Соңғы тест-драйв өтінімдері</span></div><table><thead><tr><th>Аты</th><th>Телефон</th><th>Машина</th><th>Күй</th></tr></thead><tbody id="dtd"></tbody></table></div>
+            <div class="tw"><div class="th"><span class="tt">Соңғы байланыс өтінімдері</span></div><table><thead><tr><th>Аты</th><th>Телефон</th><th>Күні</th></tr></thead><tbody id="dct"></tbody></table></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="pg-td" class="pg">
+        <div class="tb"><div class="pt">ТЕСТ ДРАЙВ ӨТІНІМДЕРІ</div><input class="sr" placeholder="Іздеу..." oninput="search('tdtb',this.value)"></div>
+        <div class="page-pad">
+          <div class="ft">
+            <div class="ftb on" onclick="fTD('all',this)">Барлығы</div>
+            <div class="ftb" onclick="fTD('new',this)">Жаңа</div>
+            <div class="ftb" onclick="fTD('confirmed',this)">Расталған</div>
+            <div class="ftb" onclick="fTD('done',this)">Өткізілді</div>
+            <div class="ftb" onclick="fTD('cancelled',this)">Бас тартылды</div>
+          </div>
+          <div class="tw"><table><thead><tr><th>#</th><th>Аты-жөні</th><th>Телефон</th><th>Автомобиль</th><th>Күні</th><th>Күй</th><th>Әрекет</th></tr></thead><tbody id="tdtb"></tbody></table></div>
+        </div>
+      </div>
+
+      <div id="pg-ct" class="pg">
+        <div class="tb"><div class="pt">БАЙЛАНЫС ӨТІНІМДЕРІ</div><input class="sr" placeholder="Іздеу..." oninput="search('cttb',this.value)"></div>
+        <div class="page-pad"><div class="tw"><table><thead><tr><th>#</th><th>Аты-жөні</th><th>Телефон</th><th>Машина</th><th>Хабарлама</th><th>Күні</th></tr></thead><tbody id="cttb"></tbody></table></div></div>
+      </div>
+
+      <div id="pg-cars" class="pg">
+        <div class="tb"><div class="pt">АВТОМОБИЛЬДЕР</div>
+          <button class="btn bb" onclick="openM()">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>ЖАҢА МАШИНА ҚОСУ
+          </button>
+        </div>
+        <div class="page-pad"><div class="cg" id="cgrid"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mb" id="modal">
+  <div class="mx">
+    <button class="mc" onclick="closeM()">✕</button>
+    <div class="mt" id="mttl">ЖАҢА МАШИНА ҚОСУ</div>
+    <div class="fg">
+      <div class="fgr"><label class="fl">Бренд *</label><input class="fi2" id="fb" placeholder="BMW, Mercedes..."></div>
+      <div class="fgr"><label class="fl">Модель *</label><input class="fi2" id="fn" placeholder="5 Series, GLE 350..."></div>
+      <div class="fgr"><label class="fl">Санат</label><select class="fsel" id="ftype"><option value="sedan">Седан</option><option value="suv">Кроссовер/SUV</option><option value="sport">Спорт</option><option value="other">Басқа</option></select></div>
+      <div class="fgr"><label class="fl">Белгі (тег)</label><input class="fi2" id="ftg" placeholder="ЖАҢА, ХИТ, СПОРТ..."></div>
+      <div class="fgr"><label class="fl">Баға (₸) *</label><input class="fi2" id="fp" placeholder="28 500 000"></div>
+      <div class="fgr"><label class="fl">Ай сайынғы (₸)</label><input class="fi2" id="fm" placeholder="339 000"></div>
+      <div class="fgr"><label class="fl">Көріну күйі</label><select class="fsel" id="factive"><option value="1">Белсенді</option><option value="0">Жасырын</option></select></div>
+      <div class="fgr"><label class="fl">Толық баға (міндетті емес)</label><input class="fi2" id="ffp" placeholder="28 500 000"></div>
+      <div class="fdv">Техникалық сипаттама</div>
+      <div class="fgr"><label class="fl">Қозғалтқыш</label><input class="fi2" id="fe" placeholder="3.0T 340 а.к."></div>
+      <div class="fgr"><label class="fl">0-100 км/с</label><input class="fi2" id="fsp" placeholder="5.1 сек"></div>
+      <div class="fgr"><label class="fl">Жетек жүйесі</label><input class="fi2" id="fd" placeholder="AWD, xDrive..."></div>
+      <div class="fgr"><label class="fl">Отын түрі</label><input class="fi2" id="ffu" placeholder="Бензин, Дизель, Гибрид"></div>
+      <div class="fdv">Сипаттама</div>
+      <div class="fgr" style="grid-column:1/-1"><label class="fl">Қысқа сипаттама</label><input class="fi2" id="ftl" placeholder="Машина туралы сипаттама..."></div>
+      <div class="fgr" style="grid-column:1/-1"><label class="fl">Жабдықтау (әр жолда жаңа)</label><textarea class="fta" id="ffeat" placeholder="Panoramic roof&#10;Harman Kardon audio&#10;Lane assist"></textarea></div>
+      <div class="fdv">Фотолар</div>
+      <div class="fgr" style="grid-column:1/-1">
+        <label class="fl">URL арқылы фото қосу</label>
+        <div class="url-row"><input class="fi2" id="furl" placeholder="https://images.unsplash.com/..."><button class="btn bb bs" onclick="addUrl()" style="white-space:nowrap">+ ҚОСУ</button></div>
+        <div class="pu"><input type="file" accept="image/*" multiple onchange="upFiles(this)">
+          <svg width="34" height="34" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="1.5" viewBox="0 0 24 24" style="display:block;margin:0 auto 10px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/></svg>
+          <div style="font-size:13px;color:var(--g)">Фото файлдарды мына жерге жүктеңіз</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.25);margin-top:4px">JPG, PNG, WEBP</div>
+        </div>
+        <div class="pp" id="pprev"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn br" onclick="closeM()">БАС ТАРТУ</button>
+      <button class="btn bb" onclick="saveCar()" id="svBtn"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><polyline points="20,6 9,17 4,12"/></svg>САҚТАУ</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script defer src="{{ url_for('static', filename='admin/js/admin.js') }}"></script>
+</body>
+</html>
